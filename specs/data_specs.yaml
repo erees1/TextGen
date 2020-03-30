@@ -1,0 +1,20 @@
+max_participants: 3
+max_context:  7
+max_message_length: 128
+remove_hyperlinks: True
+add_seq_tags: True
+combine_contexts: True
+correct_spelling: False
+punc_list: all
+
+tokens:
+  PAD_TOKEN: 0
+  START_TOKEN: 1
+  END_TOKEN: 2
+  UNK_TOKEN: 3
+
+# Tags must correspond to tokens above
+tags: ['<pad>', '<sos>', '<eos>', '<unk>']
+dictionary_length: 40000
+
+ 
