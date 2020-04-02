@@ -17,4 +17,6 @@ tokens:
 tags: ['<pad>', '<sos>', '<eos>', '<unk>']
 dictionary_length: 40000
 
- 
+fb_message_data: 'fb_messages/inbox'
+imessage_data: 'imessage/chat.db'
+word2vec_binary: 'GoogleNews-vectors-negative300.bin.gz'

@@ -37,8 +37,12 @@ class Vocab():
         if vocab is None:
             self.int2word = []
         else:
-            with open(vocab) as f:
-                self.int2word = list(json.load(f))
+            if isinstance(vocab, str):
+                with open(vocab) as f:
+                    self.int2word = list(json.load(f))
+            else:
+                if isinstance(vocab, list):
+                    self.int2word = vocab
 
         # int2word and word2int map words to and from integers
         self.int2word = np.array(self.int2word)

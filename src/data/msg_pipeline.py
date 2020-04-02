@@ -5,7 +5,9 @@ from src.data.word_utils import Vocab
 from tqdm import tqdm
 from sklearn.base import BaseEstimator, TransformerMixin
 from spellchecker import SpellChecker
+from gensim.models import KeyedVectors
 import re
+from typing import List
 
 def tokenize_and_pad(dataset, starting_vocab=None, add_if_not_present=True, verbose=0, tqdm_unit_scale=False):
     '''Pad and tokenize conversations
@@ -50,19 +52,87 @@ def tokenize_and_pad(dataset, starting_vocab=None, add_if_not_present=True, verb
 
     return tokens_array, vocab
 
+# Pipeline transformers (compaitble with sklearn pipe)
 
-class Tokenizer(BaseEstimator, TransformerMixin):
-    def __init__(self, vocab_path):
-        self.vocab = Vocab(vocab_path)
+class Word2Vec(BaseEstimator, TransformerMixin):
+    def __init__(self, word2vec_path, special_vectors):
+        self.model = KeyedVectors.load_word2vec_format(word2vec_path, binary=True)
+        self.vector_dim = len(self.model['hello'])
+        self.special_vectors = special_vectors
 
     def fit(self, X):
         return self
 
     def transform(self, X):
-        if isinstance(X, str):
-            X = X.split(" ")
-        X = self.vocab.convert2int(X, add_if_not_present=False)
+        X_new = [None] * len(X)
+        for i, example in enumerate(tqdm(X)):
+            vectors = np.empty((len(example), self.vector_dim, ))
+            for w, word in enumerate(example):
+                try:
+                    vectors[w, :] = self.model[word]
+                except KeyError:
+                    vectors[w, :] = self.special_vectors['unknown']
+            X_new[i] = vectors
+        return X_new
+
+
+class Padder(BaseEstimator, TransformerMixin):
+    def __init__(self, padding):
+        self.padding = padding
+
+    def transform(self, X):
+        max_length = max([len(row) for row in X])
+        new_X = [[''] * max_length] * len(X)
+        for i, row in enumerate(X):
+            new_X[i][(max_length - len(row)):]
+        return new_X
+
+
+class Tagger(BaseEstimator, TransformerMixin):
+    def __init__(self, start_tag, end_tag):
+        self.start_tag = start_tag
+        self.end_tag = end_tag
+
+    def fit(self, X):
+        return self
+
+    def transform(self, X):
+        return [[self.start_tag] + i + [self.end_tag] for i in X]
+
+
+class WhiteSpaceTokenizer(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass
+
+    def fit(self, X):
         return X
+
+    def transform(self, X: List[str]):
+        X_new = [None] * len(X)
+        for i, example in enumerate(X):
+            X_new[i] = example.split(' ')
+        return X_new
+
+    def inverse_transform(self, X):
+        X_new = [None] * len(X)
+        for i, example in enumerate(X):
+            X_new[i] = example.split(' ')
+        return X_new
+
+
+class IntegerTokenizer(BaseEstimator, TransformerMixin):
+    def __init__(self, vocab_path, add_to_vocab_if_not_present=True):
+        self.vocab = Vocab(vocab_path)
+        self.add_to_vocab_if_not_present = add_to_vocab_if_not_present
+
+    def fit(self, X):
+        return self
+
+    def transform(self, X):
+        X_new = [None] * len(X)
+        for i, example in enumerate(X):            
+            X_new[i] = self.vocab.convert2int(example, add_if_not_present=self.add_to_vocab_if_not_present)
+        return X_new
 
     def inverse_transform(self, X):
         if not (isinstance(X, list) or isinstance(X, np.ndarray)):
@@ -90,7 +160,6 @@ class RemoveCharsTransformer(BaseEstimator, TransformerMixin):
                 X[i] = self._clean_text(seq)
                 if X[i] == '':
                     del X[i]
-
         return X
 
     def _clean_text(self, text):
@@ -104,7 +173,6 @@ class RemoveCharsTransformer(BaseEstimator, TransformerMixin):
             text = regex.findall(text.lower())
             text = ''.join(text).strip()
             text = re.sub(' +', ' ', text)
-
         return text
 
 class SpellTransformer(BaseEstimator, TransformerMixin):

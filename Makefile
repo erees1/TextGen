@@ -19,7 +19,7 @@ initial_dict:
 
 ## Make Dataset
 data: initial_dict
-	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed data/interim specs/data_specs.yaml  --test_split 0.2
+	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed data/interim specs/data_specs.yaml  --test_split 0
 
 ## Delete all compiled Python files
 clean:

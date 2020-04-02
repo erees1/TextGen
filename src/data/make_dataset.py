@@ -14,6 +14,10 @@ from tqdm import tqdm
 from word_utils import Vocab
 import math
 import yaml
+from sklearn.pipeline import Pipeline
+
+# Global variables
+verbose = 1
 
 
 @click.command()
@@ -33,32 +37,69 @@ def main(input_filepath, output_filepath, interim_filepath, spec_filepath, test_
     with open(spec_filepath) as f:
         specs = yaml.load(f, Loader=yaml.FullLoader)
 
-    MAX_PARTICIPANTS = int(specs['max_participants'])
-    MAX_CONTEXT = int(specs['max_context'])
-    MAX_MESSAGE_LENGTH = int(specs['max_message_length'])
-    REMOVE_HYPERLINKS = specs['remove_hyperlinks']
-    ADD_SEQ_TAGS = specs['add_seq_tags']
-    COMBINE_CONTEXTS = specs['combine_contexts']
-    CORRECT_SPELLING = specs['correct_spelling']
-    punc_list = specs['punc_list']
+    word2vec_path = os.path.join(input_filepath, specs['word2vec_binary'])
 
-    verbose = 1
+    socialml_dataset = extract_socialml_dataset(input_filepath, interim_filepath, specs)
+    context_strings = socialml_dataset[0]
+    response_strings = socialml_dataset[1]
 
-    # START actual data processing
+    rs = msg_pipeline.RemoveCharsTransformer(specs['punc_list'])
+    context_strings = rs.transform(context_strings)
+    response_strings = rs.transform(response_strings)
+
+    context_filepath = os.path.join(output_filepath, 'context_strings.txt')
+    response_filepath = os.path.join(output_filepath, 'response_strings.txt')
+
+    context_strings = [line + '\n' for line in context_strings]
+    response_strings = [line + '\n' for line in response_strings]
+
+    with open(context_filepath, 'w') as f:
+        f.writelines(context_strings)
+    with open(response_filepath, 'w') as f:
+        f.writelines(response_strings)
+
+    # context_vectors, response_tokens, vocab = training_data_pipeline(
+    #     socialml_dataset, specs, word2vec_path, interim_filepath
+    # )
+    # vocab.save_vocab(os.path.join(output_filepath, 'vocab_pp2.json'))
+
+    # if test_split > 0:
+    #     X_train, X_test, Y_train, Y_test = train_test_split(context_vectors, response_tokens, test_split)
+
+    #     train_dir = os.path.join(output_filepath, 'train')
+    #     if not os.path.exists(train_dir):
+    #         os.makedirs(train_dir)
+    #     save_data(X_train, Y_train, os.path.join(train_dir, 'tokens'))
+
+    #     test_dir = os.path.join(output_filepath, 'test')
+    #     if not os.path.exists(test_dir):
+    #         os.makedirs(test_dir)
+    #     save_data(X_train, Y_train, os.path.join(test_dir, 'tokens'))
+    # else:
+    #     save_data(context_vectors, response_tokens, os.path.join(output_filepath, 'tokens'))
+
+
+def extract_socialml_dataset(input_filepath, interim_filepath, specs):
+
+    logger = logging.getLogger(__name__)
 
     # convert facebook json data into array
-    fb_data_path = os.path.join(input_filepath, 'fb_messages/inbox')
+    fb_data_path = os.path.join(input_filepath, specs['fb_message_data'])
     if os.path.exists(fb_data_path):
-        fb_message_array = socialml.FbMessenger(fb_data_path).extract(max_participants=MAX_PARTICIPANTS, min_messages=2)
+        fb_message_array = socialml.FbMessenger(fb_data_path).extract(
+            max_participants=specs['max_participants'],
+            min_messages=2,
+        )
         logger.info(f'extracted {len(fb_message_array)} conversations from fb archive')
     else:
         logger.info('No facebook database found')
         exit(1)
 
     # Convert imessage database into array
-    imessage_path = os.path.join(input_filepath, 'imessage/chat.db')
+    imessage_path = os.path.join(input_filepath, specs['imessage_data'])
     if os.path.exists(imessage_path):
-        imessage_array = socialml.IMessage(imessage_path).extract(max_participants=MAX_PARTICIPANTS, min_messages=2)
+        imessage_array = socialml.IMessage(imessage_path
+                                           ).extract(max_participants=specs['max_participants'], min_messages=2)
         logger.info(f'extracted {len(imessage_array)} conversations from imessage archive')
     else:
         logger.info('No imessage database found')
@@ -76,12 +117,14 @@ def main(input_filepath, output_filepath, interim_filepath, spec_filepath, test_
         google_profanity_words = [word.replace('\n', '') for word in google_profanity_words]
 
     message_array = socialml.filter_array(
-        message_array, remove_hyperlinks=1, remove_words=(1, google_profanity_words),
-        max_message_length=(1, MAX_MESSAGE_LENGTH)
+        message_array,
+        remove_hyperlinks=1,
+        remove_words=(1, google_profanity_words),
+        max_message_length=(1, specs['max_message_length']),
     )
 
-    # # Construct the database dictionary, this takes a LONG time if used
-    if CORRECT_SPELLING:
+    # Construct the database dictionary, this takes a LONG time if used
+    if specs['correct_spelling']:
         logger.info('Correcting spelling in dataset')
         sc = msg_pipeline.SpellTransformer(os.path.join(interim_filepath, '40k_dictionary.json'))
         for c, conversation in enumerate(tqdm(message_array)):
@@ -91,64 +134,89 @@ def main(input_filepath, output_filepath, interim_filepath, spec_filepath, test_
     # Convert the array to dataset pairs of (context, reponse)
     message_dataset = socialml.make_training_examples(
         message_array,
-        max_context_length=MAX_CONTEXT,
-        combine_contexts=COMBINE_CONTEXTS,
-        add_seq_tags=ADD_SEQ_TAGS,
-        verbose=verbose,
+        max_context_length=specs['max_context'],
+        combine_contexts=specs['combine_contexts'],
+        add_seq_tags=False,
+        verbose=1,
     )
 
-    # Func to remove symbols, numbers and tokenize the text
-    rs = msg_pipeline.RemoveCharsTransformer(punc_list)
+    return message_dataset
 
-    # Use the clean_text function to remove punctuation
-    contexts = message_dataset[0]
-    responses = message_dataset[1]
-    contexts = rs.transform(contexts)
-    responses = rs.transform(responses)
+
+def training_data_pipeline(message_dataset, specs, word2vec_path, interim_filepath):
+
+    logger = logging.getLogger(__name__)
+
+    contexts = message_dataset[0]  # 'X'
+    responses = message_dataset[1]  # 'Y'
+
+    # Pipeline elements
+    special_vectors = {'unknown': 0}
+    rs = msg_pipeline.RemoveCharsTransformer(specs['punc_list'])
+    ws = msg_pipeline.WhiteSpaceTokenizer()
+    tg = msg_pipeline.Tagger(
+        specs['tags'][specs['tokens']['START_TOKEN']], specs['tags'][specs['tokens']['START_TOKEN']]
+    )
+    w2v = msg_pipeline.Word2Vec(word2vec_path, special_vectors)
 
     # vocab object for loading / saving dictionaries, starting only
     # from the tags so the vocab is built from scratch
-    vocab = Vocab(os.path.join(interim_filepath, 'tags.json'))
+    inttk = msg_pipeline.IntegerTokenizer(specs['tags'])
 
-    context_tokens, vocab = msg_pipeline.tokenize_and_pad(
-        contexts, starting_vocab=vocab, add_if_not_present=True, verbose=verbose
+    context_pipe = Pipeline(steps=[('remove_chars', rs), ('ws_tokenizer', ws), ('word2vec', w2v)])
+    responses_pipe = Pipeline(
+        steps=[('remove_chars', rs), ('ws_tokenizer', ws), ('tagger', tg), ('int_tokenizer', inttk)]
     )
-    response_tokens, vocab = msg_pipeline.tokenize_and_pad(
-        responses, starting_vocab=vocab, add_if_not_present=True, verbose=verbose
-    )
+
+    context_vectors = context_pipe.transform(contexts)
+
+    del context_pipe
+    del w2v
+
+    response_tokens = responses_pipe.transform(responses)
+
+    # context_tokens, vocab = msg_pipeline.tokenize_and_pad(
+    #     contexts,
+    #     starting_vocab=vocab,
+    #     add_if_not_present=True,
+    #     verbose=verbose,
+    # )
+    # response_tokens, vocab = msg_pipeline.tokenize_and_pad(
+    #     responses,
+    #     starting_vocab=vocab,
+    #     add_if_not_present=True,
+    #     verbose=verbose,
+    # )
+    vocab = inttk.vocab
 
     logger.info(f'Created and tokenized dataset with {len(response_tokens)} examples')
 
+    return context_vectors, response_tokens, vocab
+
+
+def train_test_split(X, Y, test_split):
+
     if test_split > 0:
-        n_examples = len(context_tokens)
+        n_examples = len(X)
         n_test = int(test_split * n_examples)
         choice = np.random.choice(range(n_examples), size=n_test, replace=False)
         test_idx = np.zeros(n_examples, dtype=bool)
         test_idx[choice] = True
         train_idx = ~test_idx
 
-        train_context = context_tokens[train_idx]
-        train_response = response_tokens[train_idx]
-        train_dir = os.path.join(output_filepath, 'train')
-        if not os.path.exists(train_dir):
-            os.makedirs(train_dir)
-        np.savez(os.path.join(train_dir, 'msg_tokens'), X=train_context, Y=train_response)
+        X_train = X[train_idx]
+        Y_train = Y[train_idx]
+        X_test = X[test_idx]
+        Y_test = Y[test_idx]
 
-        test_context = context_tokens[test_idx]
-        test_response = response_tokens[test_idx]
-        test_dir = os.path.join(output_filepath, 'test')
-        if not os.path.exists(test_dir):
-            os.makedirs(test_dir)
-        np.savez(os.path.join(test_dir, 'msg_tokens'), X=test_context, Y=test_response)
+    return X_train, X_test, Y_train, Y_test
 
-    else:
-        np.savez(os.path.join(output_filepath, 'msg_tokens'), X=context_tokens, Y=response_tokens)
-
-    # Save vocab, pp means post processing
-    vocab.save_vocab(os.path.join(output_filepath, 'vocab_pp.json'))
-
-    return
-
+def save_data(X, Y, output_filepath):
+    if isinstance(X, np.ndarray) and isinstance(Y, np.ndarray):
+        np.savez(output_filepath, X=X, Y=Y)
+    elif isinstance(X, list) and isinstance(Y, list):
+        joblib.dump(X, os.path.join(output_filepath + '_X.gz'))
+        joblib.dump(X, os.path.join(output_filepath + '_Y.gz'))
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
