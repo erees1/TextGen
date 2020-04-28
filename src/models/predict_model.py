@@ -2,7 +2,8 @@
 import os
 import socialml
 from src.data.word_utils import Vocab
-from src.data.msg_pipeline import Tokenizer, SpellTransformer, RemoveCharsTransformer
+from src.data.msg_pipeline import IntegerTokenizer, SpellTransformer, RemoveCharsTransformer, WhiteSpaceTokenizer, Word2Vec, Tagger
+from gensim import KeyedVectors
 from sklearn.pipeline import Pipeline
 import numpy as np
 import tensorflow as tf
@@ -69,6 +70,9 @@ class SeqInference():
         dictionary_dir=None,
         max_decoder_seq_length=28,
         verbose=0,
+        pipeline='word2vec'
+        word2vec_fpath=''
+        **kwargs,
     ):
 
         self.data_spec_file = load_yaml(data_spec_file)
@@ -85,7 +89,31 @@ class SeqInference():
         self.logger = logging.getLogger(__name__)
 
         self._get_tags_from_spec()
-        self.tokenizer = Tokenizer(vocab_filepath)
+
+        # Pipeline Elements
+        self.int_tokenizer = IntegerTokenizer(vocab_filepath)
+        rs = RemoveCharsTransformer(self.data_spec_file['punc_list'])
+        ws = WhiteSpaceTokenizer()
+        self.tg = Tagger()
+
+        self.available_pipelines = ['integertokenizer', 'word2vec']
+        self.pipe = Pipeline(steps=[('remove_chars', rs), ('white_space_tokenizer', ws))
+
+        if self.dictionary_dir is not None:
+            self.pipe.append(('spelling', st))
+
+        # self.pipe.append(('tagger', tg))
+
+        if pipeline == 'integertokenizer':
+            self.pipe.append(('integer_tokenizer', self.int_tokenizer))
+
+        elif pipeline == 'word2vec':
+            word2vec = Word2Vec()
+            word2vec.set_model(KeyedVectors.load_word2vec_format(word2vec_fpath))
+            self.pipe.append(('integer_tokenizer', self.word2vec))
+
+        else:
+            raise KeyError(f'Unavailablve pipeline specified, please choose one of {self.available_pipelines}')
 
     def _log(self, message):
         if self.verbose > 1:
@@ -102,31 +130,19 @@ class SeqInference():
     def predict_response_from_text(self, message):
         reverse = self.model_spec_file['tf_dataset_params']['reverse_context']
         self._log(f'Tokenizing mesage: {message}')
-        input_tokens = self.process_message(message, reverse)
-        output_tokens = self._predict_response_from_tokens(input_tokens)
-        response = " ".join(self.tokenizer.inverse_transform(output_tokens))
-        response = self.strip_tags_from_text(response)
+        input_vectors = np.squeeze(self.process_message([message], reverse))
+        output_tokens = self._predict_response_from_tokens(input_vectors)
+        response = " ".join(self.int_tokenizer.inverse_transform(output_tokens))
+        response = np.squeeze(self.tg.inverse_transform([response]))
         return response
 
     def process_message(self, input_string, reverse):
         """turn string into a tokenized array"""
 
         # Settings
-        chars = self.data_spec_file['punc_list']
-
-        rs = RemoveCharsTransformer(chars)
-        tokenizer = self.tokenizer
-
-        if self.dictionary_dir is not None:
-            st = SpellTransformer(self.dictionary_dir)
-            pipe = Pipeline(steps=[('remove_chars', rs), ('spelling', st), ('tokenizer', tokenizer)])
-        else:
-            pipe = Pipeline(steps=[('remove_chars', rs), ('tokenizer', tokenizer)])
-
-        input_as_int = pipe.transform(input_string)
-        input_as_int = [self.START_TOKEN] + input_as_int + [self.END_TOKEN]
+        input_as_int = self.pipe.transform(input_string)
         if reverse:
-            input_as_int.reverse()
+            input_as_int = input_as_int[::-1]
         return np.asarray(input_as_int)
 
     def strip_tags_from_text(self, message):
@@ -161,7 +177,10 @@ class SeqInference():
             # Collapse the output tokens to a single vector
             probs = tf.squeeze(output_tokens)
             sampled_index, p = argmax_select(probs)
-            target_seq = tf.convert_to_tensor([[sampled_index]])
+            sampled_word = self.int_tokenizer.inverse_transform(sampled_index)
+            sampled_vector = self.pipe.transform(sampled_word)
+
+            target_seq = tf.convert_to_tensor([[sampled_vector]])
 
             # Exit condition: either hit max length or find stop character.
             if (sampled_index == self.END_TAG or len(decoded_tokens) > self.max_decoder_seq_length):
@@ -202,7 +221,11 @@ class SeqInference():
                 for beam in range(beam_width):
                     if not beam_has_ended[beam]:
                         # Last character of the beam sequence is the input for the decoder
-                        decoder_input = np.asarray([beam_seq[beam][-1]])
+                        # Convert beam_seq which has integer words into vectors
+                        prev_word = self.int_tokenizer.inverse_transform(beam_seq[beam][-1])
+                        prev_word_as_vectors = self.pipe.transform(prev_word)
+
+                        decoder_input = np.asarray([prev_word_as_vectors])
                         decoder_output, states_values = self._predict_next_char(decoder_input, beam_states[beam])
                         log_prob_char_given_prev[beam] = np.log(tf.squeeze(decoder_output).numpy())
                         beam_states[beam] = states_values

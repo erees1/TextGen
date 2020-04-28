@@ -1,5 +1,5 @@
 max_participants: 3
-max_context:  7
+max_context:  1
 max_message_length: 128
 remove_hyperlinks: True
 add_seq_tags: True

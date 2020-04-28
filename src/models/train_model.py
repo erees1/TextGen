@@ -4,11 +4,19 @@ import os
 import shutil
 import argparse
 import yaml
-from src.models import data_pre_processing, seq2seq
+from src.models import tf_dataset_loader, seq2seq
 from src.data.word_utils import Vocab
 
 
-def build_and_train(data_path, spec_path='', log_dir='', checkpoint_dir='', vocab_filepath=''):
+def build_and_train(
+    X_data_path,
+    Y_data_path,
+    spec_path='',
+    log_dir='',
+    checkpoint_dir='',
+    vocab_filepath='',
+    word2vec_filepath='',
+):
 
     # Load specs from yaml file
     specs = load_spec(spec_path)
@@ -18,7 +26,9 @@ def build_and_train(data_path, spec_path='', log_dir='', checkpoint_dir='', voca
     training_params = specs['training_params']
 
     # Conver npz array into tf.dataset and batch and shuffle etc
-    dataset = data_pre_processing.process_data(data_path, **tf_dataset_params)
+    dataset = tf_dataset_loader.load_from_txt(
+        X_data_path, Y_data_path, word2vec_filepath, vocab_filepath, **tf_dataset_params
+    )
 
     # Build and compile the model
     vocab = Vocab(vocab_filepath)
@@ -74,7 +84,7 @@ def load_spec(spec_path):
         exit(1)
 
     with open(spec_path) as f:
-        specs = yaml.load(f, Loader=yaml.BaseLoader)
+        specs = yaml.load(f, Loader=yaml.Loader)
 
     parsed_specs = {}
     for param_type in specs.keys():
@@ -92,11 +102,13 @@ def load_spec(spec_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('data_path', type=str, default=None)
+    parser.add_argument('X_data_path', type=str, default=None)
+    parser.add_argument('Y_data_path', type=str, default=None)
     parser.add_argument('--spec_path', type=str, default=None)
     parser.add_argument('--log_dir', type=str, default=None)
     parser.add_argument('--checkpoint_dir', type=str, default=None)
     parser.add_argument('--vocab_filepath', type=str, default=None)
+    parser.add_argument('--word2vec_filepath', type=str, default=None)
 
     args = parser.parse_args()
     arg_vars = vars(args)

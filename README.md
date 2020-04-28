@@ -1,9 +1,29 @@
 TextGen
 ==============================
 
-seq2seq model for end to end chatbot
 
-Project Organization
+## Dataset
+
+No data is included in this repo, but I used my soical media message history from facebook messenger and iMessage to train the model. To preapre the data run the following commands.
+
+```bash
+make data
+make short-vectors
+```
+## Training
+
+I used the notebook [C1-train_model.ipynb](./notebooks/C1-train_model.ipynb) to train the model as I was using Google Colab. To train the model locally run
+
+```bash
+python src/models/train_model.py data/processed/train/strings_X.txt data/processed/train/strings_Y.txt --spec_path $spec_path --log_dir $log_dir --checkpoint_dir $checkpoint_dir --vocab_filepath $vocab_filepath
+``` 
+
+## Inference
+
+Inference is carried out using the predict_model.py script, I also made command line tool to chat with the bot in ['src/cli`](.src/cli)
+
+---
+## Project Organization
 
 
     ├── LICENSE

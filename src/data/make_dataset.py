@@ -8,13 +8,15 @@ import os
 import joblib
 import numpy as np
 import json
-import msg_pipeline
+from src.data import msg_pipeline
 from spellchecker import SpellChecker
 from tqdm import tqdm
-from word_utils import Vocab
+from src.data.word_utils import Vocab
 import math
 import yaml
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from itertools import compress
 
 # Global variables
 verbose = 1
@@ -44,42 +46,59 @@ def main(input_filepath, output_filepath, interim_filepath, spec_filepath, test_
     response_strings = socialml_dataset[1]
 
     rs = msg_pipeline.RemoveCharsTransformer(specs['punc_list'])
+    tagger = msg_pipeline.Tagger(specs['tags'][specs['tokens']['START_TOKEN']], specs['tags'][specs['tokens']['END_TOKEN']])
+
     context_strings = rs.transform(context_strings)
     response_strings = rs.transform(response_strings)
+    response_strings = tagger.transform(response_strings)
+
+    empty_context_strings = np.asarray([True if i == '' else False for i in context_strings])
+    empty_response_strings = np.asarray([True if i == '' else False for i in response_strings])
+    non_empty_strings = ~empty_context_strings * ~empty_response_strings
+
+    response_strings = list(compress(response_strings, non_empty_strings))
+    context_strings = list(compress(context_strings, non_empty_strings))
 
     context_filepath = os.path.join(output_filepath, 'context_strings.txt')
     response_filepath = os.path.join(output_filepath, 'response_strings.txt')
 
-    context_strings = [line + '\n' for line in context_strings]
-    response_strings = [line + '\n' for line in response_strings]
+    context_strings_eol = [line + '\n' for line in context_strings]
+    response_strings_eol = [line + '\n' for line in response_strings]
 
-    with open(context_filepath, 'w') as f:
-        f.writelines(context_strings)
-    with open(response_filepath, 'w') as f:
-        f.writelines(response_strings)
+    if test_split > 0:
+        X_train, X_test, Y_train, Y_test = train_test_split(
+            context_strings_eol,
+            response_strings_eol,
+            test_size=test_split,
+        )
 
-    # context_vectors, response_tokens, vocab = training_data_pipeline(
-    #     socialml_dataset, specs, word2vec_path, interim_filepath
-    # )
-    # vocab.save_vocab(os.path.join(output_filepath, 'vocab_pp2.json'))
+        train_dir = os.path.join(output_filepath, 'train')
+        if not os.path.exists(train_dir):
+            os.makedirs(train_dir)
+        save_txt(X_train, Y_train, os.path.join(train_dir, 'strings'))
 
-    # if test_split > 0:
-    #     X_train, X_test, Y_train, Y_test = train_test_split(context_vectors, response_tokens, test_split)
+        test_dir = os.path.join(output_filepath, 'test')
+        if not os.path.exists(test_dir):
+            os.makedirs(test_dir)
+        save_txt(X_test, Y_test, os.path.join(test_dir, 'strings'))
+    else:
+        save_txt(context_strings, response_strings, os.path.join(output_filepath, 'strings'))
 
-    #     train_dir = os.path.join(output_filepath, 'train')
-    #     if not os.path.exists(train_dir):
-    #         os.makedirs(train_dir)
-    #     save_data(X_train, Y_train, os.path.join(train_dir, 'tokens'))
+    # Create and save vocab from response_strings
+    # Create vocab file with inital entries specified by tags
+    ws = msg_pipeline.WhiteSpaceTokenizer()
+    split_messages = context_strings + response_strings
+    split_messages = ws.transform(split_messages)
+    vocab = Vocab(specs['tags'])
 
-    #     test_dir = os.path.join(output_filepath, 'test')
-    #     if not os.path.exists(test_dir):
-    #         os.makedirs(test_dir)
-    #     save_data(X_train, Y_train, os.path.join(test_dir, 'tokens'))
-    # else:
-    #     save_data(context_vectors, response_tokens, os.path.join(output_filepath, 'tokens'))
+    for message in split_messages:
+        vocab.add_words(message)
+    vocab.save_vocab(os.path.join(output_filepath, 'vocab_pp.json'))
 
 
 def extract_socialml_dataset(input_filepath, interim_filepath, specs):
+    '''Extract messages using the socialml package
+    '''
 
     logger = logging.getLogger(__name__)
 
@@ -194,29 +213,23 @@ def training_data_pipeline(message_dataset, specs, word2vec_path, interim_filepa
     return context_vectors, response_tokens, vocab
 
 
-def train_test_split(X, Y, test_split):
-
-    if test_split > 0:
-        n_examples = len(X)
-        n_test = int(test_split * n_examples)
-        choice = np.random.choice(range(n_examples), size=n_test, replace=False)
-        test_idx = np.zeros(n_examples, dtype=bool)
-        test_idx[choice] = True
-        train_idx = ~test_idx
-
-        X_train = X[train_idx]
-        Y_train = Y[train_idx]
-        X_test = X[test_idx]
-        Y_test = Y[test_idx]
-
-    return X_train, X_test, Y_train, Y_test
-
 def save_data(X, Y, output_filepath):
     if isinstance(X, np.ndarray) and isinstance(Y, np.ndarray):
         np.savez(output_filepath, X=X, Y=Y)
     elif isinstance(X, list) and isinstance(Y, list):
         joblib.dump(X, os.path.join(output_filepath + '_X.gz'))
         joblib.dump(X, os.path.join(output_filepath + '_Y.gz'))
+
+
+def save_txt(X, Y, output_filepath):
+    if isinstance(X, np.ndarray) and isinstance(Y, np.ndarray):
+        np.savez(output_filepath, X=X, Y=Y)
+    elif isinstance(X, list) and isinstance(Y, list):
+        with open(output_filepath + '_X.txt', 'w') as f:
+            f.writelines(X)
+        with open(output_filepath + '_Y.txt', 'w') as f:
+            f.writelines(Y)
+
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

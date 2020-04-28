@@ -19,7 +19,11 @@ initial_dict:
 
 ## Make Dataset
 data: initial_dict
-	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed data/interim specs/data_specs.yaml  --test_split 0
+	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed data/interim specs/data_specs.yaml  --test_split 0.2
+
+## Make vectors
+short-vectors:
+	$(PYTHON_INTERPRETER) src/data/make_short_word2vec.py data/raw/GoogleNews-vectors-negative300.bin.gz data/processed/vocab_pp.json data/processed
 
 ## Delete all compiled Python files
 clean:
