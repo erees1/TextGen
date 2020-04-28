@@ -10,9 +10,10 @@ No data is included in this repo, but I used my soical media message history fro
 make data
 make short-vectors
 ```
+
 ## Training
 
-I used the notebook [C1-train_model.ipynb](./notebooks/C1-train_model.ipynb) to train the model as I was using Google Colab. To train the model locally run
+I used the notebook [`C1-train_model.ipynb`](./notebooks/C1-train_model.ipynb) to train the model as I was using Google Colab. To train the model locally run the [`src/models/train_model.py`](`./src/models/train_model.py`) script.
 
 ```bash
 python src/models/train_model.py data/processed/train/strings_X.txt data/processed/train/strings_Y.txt --spec_path $spec_path --log_dir $log_dir --checkpoint_dir $checkpoint_dir --vocab_filepath $vocab_filepath
@@ -20,7 +21,7 @@ python src/models/train_model.py data/processed/train/strings_X.txt data/process
 
 ## Inference
 
-Inference is carried out using the predict_model.py script, I also made command line tool to chat with the bot in [`src/cli`](./src/cli)
+Inference is carried out using the [`src/model/predict_model.py`](./src/models/predict.py) script, I also made command line tool to chat with the bot in [`src/cli`](./src/cli)
 
 ---
 ## Project Organization
