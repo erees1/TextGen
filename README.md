@@ -20,7 +20,7 @@ python src/models/train_model.py data/processed/train/strings_X.txt data/process
 
 ## Inference
 
-Inference is carried out using the predict_model.py script, I also made command line tool to chat with the bot in ['src/cli`](.src/cli)
+Inference is carried out using the predict_model.py script, I also made command line tool to chat with the bot in [`src/cli`](./src/cli)
 
 ---
 ## Project Organization
