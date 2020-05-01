@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import os
-import socialml
 from src.data.word_utils import Vocab
 from src.data.msg_pipeline import IntegerTokenizer, SpellTransformer, RemoveCharsTransformer, WhiteSpaceTokenizer, Word2Vec, Tagger
 from gensim import KeyedVectors
@@ -70,8 +69,8 @@ class SeqInference():
         dictionary_dir=None,
         max_decoder_seq_length=28,
         verbose=0,
-        pipeline='word2vec'
-        word2vec_fpath=''
+        pipeline='word2vec',
+        word2vec_fpath='',
         **kwargs,
     ):
 
@@ -97,7 +96,7 @@ class SeqInference():
         self.tg = Tagger()
 
         self.available_pipelines = ['integertokenizer', 'word2vec']
-        self.pipe = Pipeline(steps=[('remove_chars', rs), ('white_space_tokenizer', ws))
+        self.pipe = Pipeline(steps=[('remove_chars', rs), ('white_space_tokenizer', ws)])
 
         if self.dictionary_dir is not None:
             self.pipe.append(('spelling', st))

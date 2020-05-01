@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-import socialml
 from src.data.word_utils import Vocab
 from tqdm import tqdm
 from sklearn.base import BaseEstimator, TransformerMixin

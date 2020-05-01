@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import socialml
 import numpy as np
 import tensorflow as tf
 from src.data.msg_pipeline import WhiteSpaceTokenizer, Padder, Word2Vec, IntegerTokenizer, Tagger
