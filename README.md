@@ -1,17 +1,18 @@
 # TextGen
 
+**Status** - In Progress
+
 ## Dataset
 
 No data is included in this repo, but I used my soical media message history from facebook messenger and iMessage to train the model. To preapre the data run the following commands.
 
 ```bash
-make data
-make short-vectors
+make social_data
 ```
 
 ## Training
 
-I used the notebook [`C1-train_model.ipynb`](./notebooks/C1-train_model.ipynb) to train the model as I was using Google Colab. To train the model locally run the [`src/models/train_model.py`](`./src/models/train_model.py`) script.
+I used the notebook [`C1-train_model.ipynb`](./notebooks/C1-train_model.ipynb) to train the model as I was using Google Colab.
 
 ## Inference
 
