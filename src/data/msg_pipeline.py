@@ -3,7 +3,6 @@ import numpy as np
 from src.data.word_utils import Vocab
 from tqdm import tqdm
 from sklearn.base import BaseEstimator, TransformerMixin
-
 from gensim.models import KeyedVectors
 import re
 from typing import List

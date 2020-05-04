@@ -1,17 +1,15 @@
 model_params:
   depth: 2
-  encoder_units: 256 
-  embedding_dim: None
-  use_embedding_layer: False
-  batch_size: 64
-  encoder_input_shape: [128, 300]
-  decoder_input_shape: [129, 300]
+  n_units: 128
 
 
 tf_dataset_params:
-  batch_size: 64
+  batch_size: 32
   buffer_size: 10000
   reverse_context: True
+  vocab_size: 20000
+  x_max_length: 50
+  y_max_length: 50
 
 training_params:
   epochs: 10

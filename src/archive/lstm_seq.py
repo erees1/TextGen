@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
 from tensorflow.keras import Model
+import tensorflow_hub as hub
 from tensorflow.keras.layers import Input, LSTM, Dense, Embedding
 
 
-class SeqModel():
+class LSTMSeqModel(Model):
     def __init__(self):
         pass
 
@@ -22,12 +23,7 @@ class SeqModel():
 
         # BUILD ENCODER FOR TRAINING
         self.encoder_inputs = Input(shape=encoder_input_shape, batch_size=batch_size, name='encoder_input')
-        if use_embedding_layer:
-            # Embedding layer is shared by both encoder and decoder inputs to limit parameters
-            input_embedding = Embedding(vocab_size, embedding_dim, name='encoder_embedding', mask_zero=True)
-            embeded_encoder_inputs = input_embedding(self.encoder_inputs)
-        else:
-            embeded_encoder_inputs = self.encoder_inputs
+        embedding
 
         encoder_outputs = []
         self.encoder_states = []
@@ -95,3 +91,21 @@ class SeqModel():
 
     def compile_model(self):
         self.model.compile(optimizer='Adam', loss='sparse_categorical_crossentropy')
+
+
+class PreTrainedEmbedding(tf.keras.layers.Layer):
+    def __init__(self, mask_value='', **kwargs):
+        super(PreTrainedEmbedding, self).__init__(**kwargs)
+        self.embedding = hub.KerasLayer(
+            "https://tfhub.dev/google/tf2-preview/nnlm-en-dim50-with-normalization/1", dtype=tf.string,
+            input_shape=[[]], output_shape=[50]
+        )
+        self.mask_value = mask_value
+
+    def call(self, inputs):
+        x = self.embedding(inputs)
+        return x
+
+    def compute_mask(self, inputs, mask=None):
+        return inputs == self.mask_value
+

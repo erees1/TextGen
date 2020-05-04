@@ -13,13 +13,9 @@ PYTHON_INTERPRETER = python3
 # COMMANDS                                                                      #
 #################################################################################
 
-## Make Vocab
-initial_dict:
-	$(PYTHON_INTERPRETER) src/data/make_starting_dictionary.py data/interim specs/data_specs.yaml
-
 ## Make Dataset
-data: initial_dict
-	$(PYTHON_INTERPRETER) src/data/make_dataset.py data/raw data/processed data/interim specs/data_specs.yaml  --test_split 0.2
+social_data:
+	$(PYTHON_INTERPRETER) src/data/make_social_dataset.py data/raw data/processed/social specs/social_data_specs.yaml  --test_split 0.2
 
 ## Make vectors
 short-vectors:
